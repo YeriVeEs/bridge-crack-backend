@@ -6,3 +6,4 @@ scikit-image
 scipy
 ultralytics
 python-multipart
+scikit-image
