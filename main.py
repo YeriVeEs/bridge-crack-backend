@@ -43,11 +43,11 @@ async def analyze(file: UploadFile = File(...)):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    edges = cv2.Canny(gray, 50, 150)
+    edges = cv2.Canny(gray, 30, 100)
 
     kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.dilate(edges, kernel, iterations=1)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+    binary = cv2.dilate(edges, kernel, iterations=2)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
 
