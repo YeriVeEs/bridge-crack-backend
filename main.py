@@ -52,10 +52,22 @@ async def analyze(file: UploadFile = File(...)):
         2
     )
 
-    # Morphological cleanup
+       # Morphological cleanup
     kernel = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    # Remove small connected components
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+
+    min_area = 300  
+    clean_mask = np.zeros(binary.shape, dtype=np.uint8)
+
+    for i in range(1, num_labels):
+        if stats[i, cv2.CC_STAT_AREA] > min_area:
+            clean_mask[labels == i] = 255
+
+    binary = clean_mask
 
     # Skeleton of image
     binary_bool = binary > 0
