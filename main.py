@@ -41,18 +41,12 @@ async def analyze(file: UploadFile = File(...)):
         return JSONResponse({"error": "Invalid image"}, status_code=400)
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    binary = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        15,
-        2
-    )
+    edges = cv2.Canny(gray, 50, 150)
 
     kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+    binary = cv2.dilate(edges, kernel, iterations=1)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
@@ -60,11 +54,10 @@ async def analyze(file: UploadFile = File(...)):
     clean_mask = np.zeros(binary.shape, dtype=np.uint8)
 
     image_area = image.shape[0] * image.shape[1]
-    min_area = int(0.0002 * image_area)
+    min_area = int(0.0001 * image_area)
 
     for i in range(1, num_labels):
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area > min_area:
+        if stats[i, cv2.CC_STAT_AREA] > min_area:
             clean_mask[labels == i] = 255
 
     binary = clean_mask
