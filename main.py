@@ -11,6 +11,7 @@ from ultralytics import YOLO
 
 app = FastAPI()
 
+# Allow frontend access
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,13 +23,16 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Load trained YOLO crack model
+# Load trained YOLO model
 model = YOLO("runs/segment/train5/weights/best.pt")
 
 
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
 
+    
+    # SAVE UPLOADED IMAGE
+    
     file_path = os.path.join(UPLOAD_DIR, file.filename)
 
     with open(file_path, "wb") as buffer:
@@ -38,11 +42,11 @@ async def analyze(file: UploadFile = File(...)):
 
     if image is None:
         return JSONResponse({"error": "Invalid image"}, status_code=400)
-   
-    # YOLO DETECTION
+
+    # YOLO CRACK DETECTION
     
 
-    results = model.predict(file_path, conf=0.25, imgsz=640)
+    results = model(file_path, conf=0.25, imgsz=640)
 
     binary = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
 
@@ -55,9 +59,9 @@ async def analyze(file: UploadFile = File(...)):
             mask = (mask > 0.5).astype(np.uint8) * 255
             binary = cv2.bitwise_or(binary, mask)
 
-    # -------------------
+    
     # CLEAN MASK
-    # -------------------
+    
 
     kernel = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
@@ -75,9 +79,27 @@ async def analyze(file: UploadFile = File(...)):
 
     binary = clean_mask
 
-    # -------------------
+   
+    # HANDLE NO CRACK CASE
+    
+
+    if np.sum(binary) == 0:
+
+        _, buffer = cv2.imencode(".png", image)
+        image_base64 = "data:image/png;base64," + base64.b64encode(buffer).decode("utf-8")
+
+        return JSONResponse({
+            "status": "success",
+            "crack_length_mm": 0,
+            "avg_width_mm": 0,
+            "max_width_mm": 0,
+            "severity": "No crack detected",
+            "annotated_image": image_base64
+        })
+
+   
     # SKELETONIZE CRACK
-    # -------------------
+    
 
     binary_bool = binary > 0
     skeleton = skeletonize(binary_bool)
@@ -85,9 +107,9 @@ async def analyze(file: UploadFile = File(...)):
 
     crack_length_pixels = int(np.sum(skeleton == 255))
 
-    # -------------------
+ 
     # WIDTH CALCULATION
-    # -------------------
+    
 
     distance_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
     width_values = distance_map[skeleton == 255]
@@ -99,9 +121,9 @@ async def analyze(file: UploadFile = File(...)):
         avg_width_pixels = 0.0
         max_width_pixels = 0.0
 
-    # -------------------
-    # PIXEL → MM
-    # -------------------
+   
+    # PIXEL → MM CONVERSION
+  
 
     mm_per_pixel = 0.2
 
@@ -109,9 +131,9 @@ async def analyze(file: UploadFile = File(...)):
     avg_width_mm = avg_width_pixels * mm_per_pixel
     max_width_mm = max_width_pixels * mm_per_pixel
 
-    # -------------------
-    # SEVERITY
-    # -------------------
+    
+    # SEVERITY CLASSIFICATION
+   
 
     if max_width_mm < 0.3:
         severity = "Low"
@@ -120,16 +142,22 @@ async def analyze(file: UploadFile = File(...)):
     else:
         severity = "Severe"
 
-    # -------------------
     # CREATE ANNOTATED IMAGE
-    # -------------------
-
+    
     annotated = image.copy()
+
+    # crack area
     annotated[binary == 255] = [0, 0, 255]
+
+    # crack centerline
     annotated[skeleton == 255] = [0, 255, 0]
 
     _, buffer = cv2.imencode(".png", annotated)
-    image_base64 = base64.b64encode(buffer).decode("utf-8")
+    image_base64 = "data:image/png;base64," + base64.b64encode(buffer).decode("utf-8")
+
+   
+    # RETURN RESULTS
+    
 
     return JSONResponse({
         "status": "success",
